@@ -50,6 +50,18 @@ class LocationService : LifecycleService() {
     
     private lateinit var locationManager: android.location.LocationManager
     private lateinit var locationListener: android.location.LocationListener
+    private lateinit var settingsManager: SettingsManager
+    private lateinit var uploader: LocationUploader
+    
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+    
+    // 上次上报的位置（用于计算位移）
+    private var lastReportedLocation: Location? = null
+    // 上次上报时间
+    private var lastReportTime = 0L
+    // 当前定位状态
+    private var currentStatus = "未启动"
     
     override fun onCreate() {
         super.onCreate()
