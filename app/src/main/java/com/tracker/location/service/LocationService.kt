@@ -83,6 +83,28 @@ class LocationService : LifecycleService() {
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         }
     }
+    
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        
+        when (intent?.action) {
+            ACTION_START -> startLocationUpdates()
+            ACTION_STOP -> stopLocationUpdates()
+            ACTION_MANUAL_UPLOAD -> manualUpload()
+        }
+        
+        return START_STICKY  // 服务被杀死后自动重启
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+        try {
+            locationManager.removeUpdates(locationListener)
+        } catch (e: Exception) {
+            // 忽略
+        }
+    }
 
     /**
      * 启动位置更新
