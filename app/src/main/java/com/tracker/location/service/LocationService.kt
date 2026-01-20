@@ -308,7 +308,9 @@ class LocationService : LifecycleService() {
      * 广播位置更新
      */
     private fun broadcastLocation(location: Location) {
+        currentStatus = "已定位"
         val intent = Intent(BROADCAST_LOCATION_UPDATE).apply {
+            setPackage(packageName)  // 设置包名，使其成为显式广播
             putExtra(EXTRA_LATITUDE, location.latitude)
             putExtra(EXTRA_LONGITUDE, location.longitude)
             putExtra(EXTRA_ACCURACY, location.accuracy)
@@ -322,6 +324,7 @@ class LocationService : LifecycleService() {
      */
     private fun broadcastStatus() {
         val intent = Intent(BROADCAST_LOCATION_UPDATE).apply {
+            setPackage(packageName)  // 设置包名，使其成为显式广播
             putExtra(EXTRA_STATUS, currentStatus)
         }
         sendBroadcast(intent)

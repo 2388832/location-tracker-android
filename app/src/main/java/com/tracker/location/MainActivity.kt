@@ -88,9 +88,9 @@ class MainActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
-        // 注册位置更新广播 (使用 ContextCompat 兼容低版本)
+        // 注册位置更新广播
         val filter = IntentFilter(LocationService.BROADCAST_LOCATION_UPDATE)
-        ContextCompat.registerReceiver(this, locationReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(this, locationReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
         
         // 每次回到界面，如果服务应该在运行，就请求一次状态更新
         if (isServiceRunning) {
