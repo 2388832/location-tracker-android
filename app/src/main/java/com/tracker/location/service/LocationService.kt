@@ -126,15 +126,35 @@ class LocationService : LifecycleService() {
             setWaitForAccurateLocation(true)
         }.build()
         
+        // 检查定位服务是否开启
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+        if (!locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) &&
+            !locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+            currentStatus = "错误: 系统定位未开启"
+            broadcastStatus()
+            return
+        }
+
         // 启动位置更新
-        fusedLocationClient.requestLocationUpdates(
-            locationRequest,
-            locationCallback,
-            Looper.getMainLooper()
-        )
-        
-        currentStatus = "定位中..."
-        broadcastStatus()
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            ).addOnFailureListener { e ->
+                currentStatus = "启动失败: ${e.message}"
+                broadcastStatus()
+            }
+            
+            currentStatus = "定位中... (等待数据)"
+            broadcastStatus()
+        } catch (e: SecurityException) {
+            currentStatus = "权限异常: ${e.message}"
+            broadcastStatus()
+        } catch (e: Exception) {
+            currentStatus = "未知错误: ${e.message}"
+            broadcastStatus()
+        }
     }
     
     /**
