@@ -190,9 +190,17 @@ class MainActivity : AppCompatActivity() {
     /**
      * 切换服务状态
      */
+    private var isServiceRunning = false
+
+    /**
+     * 切换服务状态
+     */
     private fun toggleService() {
-        // 简单实现：每次点击都启动服务
-        checkBackgroundLocationPermission()
+        if (isServiceRunning) {
+            stopLocationService()
+        } else {
+            checkBackgroundLocationPermission()
+        }
     }
     
     /**
@@ -208,8 +216,23 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         
+        isServiceRunning = true
         binding.btnToggleService.text = "停止定位"
         Toast.makeText(this, "定位服务已启动", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 停止定位服务
+     */
+    private fun stopLocationService() {
+        val intent = Intent(this, LocationService::class.java).apply {
+            action = LocationService.ACTION_STOP
+        }
+        startService(intent)
+        
+        isServiceRunning = false
+        binding.btnToggleService.text = "启动定位"
+        Toast.makeText(this, "定位服务已停止", Toast.LENGTH_SHORT).show()
     }
     
     /**
@@ -263,20 +286,56 @@ class MainActivity : AppCompatActivity() {
      * 显示设置对话框
      */
     private fun showSettingsDialog() {
-        val modes = arrayOf("定时上报", "位移触发")
+        val modes = arrayOf("定时上报", "位移触发", "配置服务器")
         var selectedMode = settingsManager.uploadMode
         
         AlertDialog.Builder(this)
-            .setTitle("上报模式")
-            .setSingleChoiceItems(modes, selectedMode) { _, which ->
-                selectedMode = which
+            .setTitle("设置")
+            .setSingleChoiceItems(modes, if (selectedMode > 1) -1 else selectedMode) { dialog, which ->
+                when (which) {
+                    0, 1 -> {
+                        // 上报模式
+                        settingsManager.uploadMode = which
+                        updateSettingsDisplay()
+                        dialog.dismiss()
+                        if (which == 0) showIntervalDialog() else showDistanceDialog()
+                    }
+                    2 -> {
+                        // 服务器配置
+                        dialog.dismiss()
+                        showServerDialog()
+                    }
+                }
             }
-            .setPositiveButton("确定") { _, _ ->
-                settingsManager.uploadMode = selectedMode
-                if (selectedMode == 0) {
-                    showIntervalDialog()
+            .setNegativeButton("取消", null)
+            .show()
+    }
+    
+    /**
+     * 显示服务器配置对话框
+     */
+    private fun showServerDialog() {
+        val input = android.widget.EditText(this).apply {
+            hint = "http://192.168.1.x:8000"
+            setText(settingsManager.serverUrl)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        
+        val container = android.widget.FrameLayout(this).apply {
+            setPadding(50, 20, 50, 20)
+            addView(input)
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("服务器地址")
+            .setView(container)
+            .setPositiveButton("保存") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isNotEmpty() && (url.startsWith("http://") || url.startsWith("https://"))) {
+                    settingsManager.serverUrl = url
+                    Toast.makeText(this, "地址已更新", Toast.LENGTH_SHORT).show()
                 } else {
-                    showDistanceDialog()
+                    Toast.makeText(this, "地址格式无效", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("取消", null)
