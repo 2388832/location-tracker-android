@@ -31,12 +31,13 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       
-      # 生成 Gradle Wrapper（如果缺失）
-      - name: Generate Gradle Wrapper
+      # 下载 Gradle Wrapper (直接下载避免版本兼容性问题)
+      - name: Download Gradle Wrapper
         run: |
           if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            echo "Generating Gradle Wrapper..."
-            gradle wrapper --gradle-version 8.4
+            echo "Downloading Gradle Wrapper..."
+            mkdir -p gradle/wrapper
+            curl -L -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradle/wrapper/gradle-wrapper.jar
           fi
       
       # 授予 gradlew 执行权限
