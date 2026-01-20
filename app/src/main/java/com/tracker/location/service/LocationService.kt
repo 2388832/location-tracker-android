@@ -48,57 +48,29 @@ class LocationService : LifecycleService() {
         const val EXTRA_STATUS = "status"
     }
     
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationCallback: LocationCallback
-    private lateinit var settingsManager: SettingsManager
-    private lateinit var uploader: LocationUploader
-    
-    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
-    
-    // 上次上报的位置（用于计算位移）
-    private var lastReportedLocation: Location? = null
-    // 上次上报时间
-    private var lastReportTime = 0L
-    // 当前定位状态
-    private var currentStatus = "未启动"
+    private lateinit var locationManager: android.location.LocationManager
+    private lateinit var locationListener: android.location.LocationListener
     
     override fun onCreate() {
         super.onCreate()
         
         // 初始化
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
         settingsManager = (application as TrackerApplication).settingsManager
         uploader = LocationUploader(this)
         
         // 创建位置回调
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { location ->
-                    handleNewLocation(location)
-                }
+        locationListener = object : android.location.LocationListener {
+            override fun onLocationChanged(location: Location) {
+                handleNewLocation(location)
             }
+            
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         }
     }
-    
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent, flags, startId)
-        
-        when (intent?.action) {
-            ACTION_START -> startLocationUpdates()
-            ACTION_STOP -> stopLocationUpdates()
-            ACTION_MANUAL_UPLOAD -> manualUpload()
-        }
-        
-        return START_STICKY  // 服务被杀死后自动重启
-    }
-    
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceScope.cancel()
-        stopLocationUpdates()
-    }
-    
+
     /**
      * 启动位置更新
      */
@@ -117,58 +89,58 @@ class LocationService : LifecycleService() {
         // 启动前台服务
         startForegroundService()
         
-        // 配置位置请求
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            5000L  // 5 秒更新一次位置
-        ).apply {
-            setMinUpdateIntervalMillis(2000L)  // 最小更新间隔 2 秒
-            setWaitForAccurateLocation(true)
-        }.build()
-        
-        // 检查定位服务是否开启
-        val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-        if (!locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) &&
-            !locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-            currentStatus = "错误: 系统定位未开启"
-            broadcastStatus()
-            return
-        }
-
-        // 启动位置更新
         try {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
-            ).addOnFailureListener { e ->
-                currentStatus = "启动失败: ${e.message}"
+            var providerEnabled = false
+            
+            // 请求 GPS 定位
+            if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    android.location.LocationManager.GPS_PROVIDER,
+                    2000L, // 最小时间间隔 2秒
+                    0f,    // 最小距离间隔 0米
+                    locationListener
+                )
+                providerEnabled = true
+            }
+            
+            // 请求网络定位
+            if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    android.location.LocationManager.NETWORK_PROVIDER,
+                    2000L,
+                    0f,
+                    locationListener
+                )
+                providerEnabled = true
+            }
+            
+            if (!providerEnabled) {
+                currentStatus = "错误: GPS和网络定位均未开启"
                 broadcastStatus()
+                return
             }
             
             currentStatus = "定位中... (等待数据)"
             broadcastStatus()
-        } catch (e: SecurityException) {
-            currentStatus = "权限异常: ${e.message}"
-            broadcastStatus()
+            
         } catch (e: Exception) {
-            currentStatus = "未知错误: ${e.message}"
+            currentStatus = "启动失败: ${e.message}"
             broadcastStatus()
         }
     }
-    
+
     /**
      * 停止位置更新
      */
     private fun stopLocationUpdates() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        locationManager.removeUpdates(locationListener)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         
         currentStatus = "已停止"
         broadcastStatus()
     }
-    
+
     /**
      * 手动触发上报
      */
@@ -181,12 +153,24 @@ class LocationService : LifecycleService() {
             return
         }
         
-        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-            location?.let {
-                serviceScope.launch {
-                    uploadLocation(it, true)
-                }
+        // 获取最后的已知位置
+        val lastGps = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+        val lastNet = locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+        
+        // 选一个更新的或更精确的
+        var location = lastGps
+        if (lastNet != null) {
+            if (location == null || lastNet.time > location.time) {
+                location = lastNet
             }
+        }
+        
+        location?.let {
+            serviceScope.launch {
+                uploadLocation(it, true)
+            }
+        } ?: run {
+            Toast.makeText(this, "暂无位置信息", Toast.LENGTH_SHORT).show()
         }
     }
     
